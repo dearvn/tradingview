@@ -1,0 +1,112 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © binancash
+
+//@version=5
+indicator("Snag - Detect Bull Bear", "Snag - Bull Bear", overlay=true, max_lines_count=500, max_bars_back=4900, max_boxes_count=500)
+
+zigzag_len = input.int(9, "ZigZag Length")
+show_zigzag = input.bool(true, "Show Zigzag")
+fib_factor = input.float(0.33, "Fib Factor for breakout confirmation", 0, 1, 0.01)
+
+var float[] high_points_arr = array.new_float(5)
+var int[] high_index_arr = array.new_int(5)
+var float[] low_points_arr = array.new_float(5)
+var int[] low_index_arr = array.new_int(5)
+var box[] bu_ob_boxes = array.new_box(5)
+var box[] be_ob_boxes = array.new_box(5)
+
+to_up = high >= ta.highest(zigzag_len)
+to_down = low <= ta.lowest(zigzag_len)
+
+trend = 1
+trend := nz(trend[1], 1)
+trend := trend == 1 and to_down ? -1 : trend == -1 and to_up ? 1 : trend
+
+last_trend_up_since = ta.barssince(to_up[1])
+low_val = ta.lowest(nz(last_trend_up_since > 0 ? last_trend_up_since : 1, 1))
+low_index = bar_index - ta.barssince(low_val == low)
+
+last_trend_down_since = ta.barssince(to_down[1])
+high_val = ta.highest(nz(last_trend_down_since > 0 ? last_trend_down_since : 1, 1))
+high_index = bar_index - ta.barssince(high_val == high)
+
+if ta.change(trend) != 0
+    if trend == 1
+        array.push(low_points_arr, low_val)
+        array.push(low_index_arr, low_index)
+    if trend == -1
+        array.push(high_points_arr, high_val)
+        array.push(high_index_arr, high_index)
+
+
+f_get_high(ind) =>
+    [array.get(high_points_arr, array.size(high_points_arr) - 1 - ind), array.get(high_index_arr, array.size(high_index_arr) - 1 - ind)]
+
+
+f_get_low(ind) =>
+    [array.get(low_points_arr, array.size(low_points_arr) - 1 - ind), array.get(low_index_arr, array.size(low_index_arr) - 1 - ind)]
+
+
+[h0, h0i] = f_get_high(0)
+[h1, h1i] = f_get_high(1)
+
+[l0, l0i] = f_get_low(0)
+[l1, l1i] = f_get_low(1)
+
+if ta.change(trend) != 0 and show_zigzag
+    if trend == 1
+        line.new(h0i, h0, l0i, l0)
+    if trend == -1
+        line.new(l0i, l0, h0i, h0)
+
+market = 1
+market := nz(market[1], 1)
+last_l0 = ta.valuewhen(ta.change(market) != 0, l0, 0)
+last_h0 = ta.valuewhen(ta.change(market) != 0, h0, 0)
+market := last_l0 == l0 or last_h0 == h0 ? market : market == 1 and l0 < l1 and l0 < l1 - math.abs(h0 - l1) * fib_factor ? -1 : market == -1 and h0 > h1 and h0 > h1 + math.abs(h1 - l0) * fib_factor ? 1 : market
+
+bu_ob_index = bar_index
+bu_ob_index := nz(bu_ob_index[1], bar_index)
+for i=h1i to l0i[zigzag_len]
+    index = bar_index - i 
+    if open[index] > close[index]
+        bu_ob_index := bar_index[index]
+
+bu_ob_since = bar_index - bu_ob_index
+
+be_ob_index = bar_index
+be_ob_index := nz(be_ob_index[1], bar_index)
+for i=l1i to h0i[zigzag_len]
+    index = bar_index - i 
+    if open[index] < close[index]
+        be_ob_index := bar_index[index]
+
+be_ob_since = bar_index - be_ob_index
+
+if ta.change(market) != 0
+    if market == 1
+        line.new(h1i, h1, h0i, h1, color=color.green, width=1)
+        bull = box.new(bu_ob_index, high[bu_ob_since], bar_index, low[bu_ob_since], bgcolor=color.new(color.black, 70), border_color=color.green, text="BULL", text_color=color.green, text_halign=text.align_right, text_size=size.normal)
+        array.push(bu_ob_boxes, bull)
+    if market == -1
+        line.new(l1i, l1, l0i, l1, color=color.red, width=1)
+        bear = box.new(be_ob_index, high[be_ob_since], bar_index, low[be_ob_since], bgcolor=color.new(color.black, 70), border_color=color.red, text="BEAR", text_color=color.red, text_halign=text.align_right, text_size=size.normal)
+        array.push(be_ob_boxes, bear)
+
+for bull_ob in bu_ob_boxes
+    bottom = box.get_bottom(bull_ob)
+    if close < bottom
+        box.delete(bull_ob)
+    else if array.size(bu_ob_boxes) == 5
+        box.delete(array.shift(bu_ob_boxes))
+    else
+        box.set_right(bull_ob, bar_index)
+    
+for bear_ob in be_ob_boxes
+    top = box.get_top(bear_ob)
+    if close > top
+        box.delete(bear_ob)
+    else if array.size(be_ob_boxes) == 5
+        box.delete(array.shift(be_ob_boxes))
+    else
+        box.set_right(bear_ob, bar_index)
