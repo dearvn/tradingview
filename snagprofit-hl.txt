@@ -1,0 +1,17 @@
+//@version=5
+indicator("Snagprofit HL", overlay=true)
+window1 = input.int(title='lookback window 1:', defval=8)
+window2 = input.int(title='lookback window 2:', defval=21)
+
+top1 = ta.valuewhen(high >= ta.highest(high, window1), high, 0)
+bot1 = ta.valuewhen(low <= ta.lowest(low, window1), low, 0)
+top2 = ta.valuewhen(high >= ta.highest(high, window2), high, 0)
+bot2 = ta.valuewhen(low <= ta.lowest(low, window2), low, 0)
+
+//t1 = plot(top1, color=top1 != top1[1] ? na : color.black)
+//b1 = plot(bot1, color=bot1 != bot1[1] ? na : color.black)
+t2 = plot(top2, color=top2 != top2[1] ? na : color.black)
+b2 = plot(bot2, color=bot2 != bot2[1] ? na : color.black)
+
+//fill(t1, t2, color=color.orange)
+//fill(b1, b2, color=color.olive)

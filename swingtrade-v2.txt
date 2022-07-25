@@ -1,0 +1,192 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © thinhdangho
+
+//@version=5
+indicator("Snag - SWING TRADE LONG TERM V2", overlay=true)
+
+pctUp = input.float(title='Top Up %', defval=5.0)
+pctDown = input.float(title='Bottom Down %', defval=-5.0)
+
+f_RoundUp(number, decimals) =>
+    factor = math.pow(10, decimals)
+    math.ceil(number * factor) / factor
+    
+f_nDecimals(_in) =>
+    n  = int(na), s = str.tostring(_in), p = str.pos(s, ".")
+    n := na(str.tonumber(s)) ? int(na) : na(p) ? 0 :
+     str.length(str.substring(s, p + 1))
+
+_n = f_nDecimals(close)
+
+// Trend Up Strong
+// Close Cross Up EMA 13, or Close Cross Up EMA 50 or Close Cross Up EMA 200
+// Mark as Begin Up Trend
+// Wait for EMA 13 Cross Up EMA 48 🡪 Confirm Strong Uptrend 🡪 BUY
+// EMA 48 CROSS UP EMA 200 🡪 STRONGER UPTREND
+// Trend Down Strong
+// Close Cross Down EMA 13, or Close Cross Down EMA 50 or Close Cross Down EMA 200
+// Mark as Begin Down Trend
+// Wait for EMA 13 Cross Down EMA 48 🡪 Confirm Strong Downtrend 🡪 SELL
+// EMA 48 CROSS DOWN EMA 200 🡪 STRONGER DOWNTREND
+
+wma13 = ta.wma(close, 13)
+plot(wma13, title="WMA13", color=color.blue)
+
+wma48 = ta.wma(close, 48)
+plot(wma48, title="WMA48", color=color.yellow)
+
+wma200 = ta.wma(close, 200)
+plot(wma200, title="WMA200", color=color.white)
+
+crossUpWMA13 = ta.crossover(close, wma13)
+crossDownWMA13 = ta.crossunder(close, wma13)
+crossUpWMA48 = ta.crossover(close, wma48)
+crossDownWMA48 = ta.crossunder(close, wma48)
+crossUpWMA200 = ta.crossover(close, wma200)
+crossDownWMA200 = ta.crossunder(close, wma200)
+
+crossUpWMA13_48 = ta.crossover(wma13, wma48)
+crossDownWMA13_48 = ta.crossunder(wma13, wma48)
+crossUpWMA48_200 = ta.crossover(wma48, wma200)
+crossDownWMA48_200 = ta.crossunder(wma48, wma200)
+
+var price_wmacrossup_arr = array.new_float()
+var price_wmacrossdown_arr = array.new_float()
+
+if crossUpWMA48_200
+    price_wmacrossdown_arr := array.new_float()
+    array.push(price_wmacrossup_arr, close)
+else if crossDownWMA48_200
+    price_wmacrossup_arr := array.new_float()
+    array.push(price_wmacrossdown_arr, close)
+        
+price_up = 0.0
+price_down = 0.0
+if array.size(price_wmacrossup_arr) > 0
+    price_up := array.get(price_wmacrossup_arr, array.size(price_wmacrossup_arr)-1)
+else if array.size(price_wmacrossdown_arr) > 0
+    price_down := array.get(price_wmacrossdown_arr, array.size(price_wmacrossdown_arr)-1)
+
+var bool isUpTrend = false
+var bool isDownTrend = false
+
+if crossUpWMA13 and isUpTrend == false
+    isUpTrend := true
+    isDownTrend := false
+else if crossUpWMA48 and isUpTrend == false
+    isUpTrend := true
+    isDownTrend := false
+else if crossUpWMA200 and isUpTrend == false
+    isUpTrend := true
+    isDownTrend := false
+
+if crossDownWMA13 and isDownTrend == false
+    isUpTrend := false
+    isDownTrend := true
+else if crossDownWMA48 and isDownTrend == false
+    isUpTrend := false
+    isDownTrend := true
+else if crossDownWMA200 and isDownTrend == false
+    isUpTrend := false
+    isDownTrend := true
+    
+var int trendUp = 0
+var int trendDown = 0
+
+txtMarkTrend = ''
+txtOrder = 'N/A'
+if isUpTrend
+    if crossUpWMA13_48
+        trendUp := 1
+        trendDown := 0
+    if crossUpWMA48_200
+        trendUp := 2
+        trendDown := 0
+        
+if isDownTrend
+    if crossDownWMA13_48
+        trendUp := 0
+        trendDown := 1
+    if crossDownWMA48_200
+        trendUp := 0
+        trendDown := 2
+        
+if isUpTrend
+    txtMarkTrend := 'Begin Up Trend'
+    if trendUp == 1
+        txtMarkTrend := 'Confirm Strong Uptrend'
+        txtOrder := 'BUY'
+    else if trendUp == 2
+        txtMarkTrend := 'STRONGER UPTREND'
+        txtOrder := 'BUY'
+
+else if isDownTrend
+    txtMarkTrend := 'Begin Down Trend'
+    if trendDown == 1
+        txtMarkTrend := 'Confirm Strong Downtrend'
+        txtOrder := 'SELL'
+    else if trendDown == 2
+        txtMarkTrend := 'STRONGER DOWNTREND'
+    txtOrder := 'SELL'
+    
+if barstate.islast
+    var table panel = table.new("bottom_right", 6, 30)
+
+    table.cell(panel, 0, 1, "TREND", bgcolor = color.yellow, text_color=color.black, width=18, text_halign=text.align_left)
+    table.cell(panel, 1, 1, txtMarkTrend, bgcolor = color.yellow, text_color=color.black, width=30, text_halign=text.align_left)    
+    table.cell(panel, 0, 2, "ORDER", bgcolor = color.yellow, text_color=color.black, width=18, text_halign=text.align_left)
+    table.cell(panel, 1, 2, txtOrder, bgcolor = color.yellow, text_color=color.black, width=30, text_halign=text.align_left)    
+    
+    if price_up > 0
+        price = high - price_up
+        pct = f_RoundUp(price/price_up*100, 2)
+        table.cell(panel, 0, 3, "Price Up", bgcolor = color.yellow, text_color=color.black, width=18, text_halign=text.align_left)
+        table.cell(panel, 1, 3, str.format("${0}", price_up), bgcolor = color.yellow, text_color=color.black, width=30, text_halign=text.align_left)    
+    
+        txtTop = ''
+        if pct >= pctUp
+            txtTop := 'TOP'
+        table.cell(panel, 0, 4, "Up Change", bgcolor = color.yellow, text_color=color.black, width=18, text_halign=text.align_left)
+        table.cell(panel, 1, 4, str.format("${0}    {1}%    {2}", price, pct, txtTop), bgcolor = color.yellow, text_color=color.black, width=30, text_halign=text.align_left) 
+        
+    else if price_down > 0
+        price = low - price_down
+        pct = f_RoundUp(price/price_down*100, 2)
+        table.cell(panel, 0, 3, "Price Down", bgcolor = color.yellow, text_color=color.black, width=18, text_halign=text.align_left)
+        table.cell(panel, 1, 3, str.format("${0}", price_down), bgcolor = color.yellow, text_color=color.black, width=30, text_halign=text.align_left)    
+    
+        txtBottom = ''
+        if pct <= pctDown
+            txtBottom := 'BOTTOM'
+        table.cell(panel, 0, 4, "Down Change", bgcolor = color.yellow, text_color=color.black, width=18, text_halign=text.align_left)
+        table.cell(panel, 1, 4, str.format("${0}    {1}%   {2}", price, pct, txtBottom), bgcolor = color.yellow, text_color=color.black, width=30, text_halign=text.align_left)    
+    
+// Alert
+var time_wmacrossup_arr = array.new_int()
+var time_wmacrossdown_arr = array.new_int()
+
+if trendUp == 1 or trendUp == 2
+    time_wmacrossdown_arr := array.new_int()
+    if array.size(time_wmacrossup_arr) == 0
+        array.push(time_wmacrossup_arr, time)
+else if trendDown == 1 or trendDown == 2
+    time_wmacrossup_arr := array.new_int()
+    if array.size(time_wmacrossdown_arr) == 0
+        array.push(time_wmacrossdown_arr, time)
+        
+is_alert_wmacrossup = false
+is_alert_wmacrossdown = false
+
+if array.size(time_wmacrossup_arr) > 0
+    if time == array.get(time_wmacrossup_arr, array.size(time_wmacrossup_arr)-1)
+        is_alert_wmacrossup := true
+else if array.size(time_wmacrossdown_arr) > 0
+    if time == array.get(time_wmacrossdown_arr, array.size(time_wmacrossdown_arr)-1)
+        is_alert_wmacrossdown := true
+        
+alertcondition(is_alert_wmacrossdown, title='ENTER PUT', message='Get out Call and Enter PUT')
+alertcondition(is_alert_wmacrossup, title='ENTER CALL', message='Get out Put and Enter CALL')
+
+
+
+

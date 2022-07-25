@@ -1,0 +1,42 @@
+//@version=5
+indicator("Snagprofit Volume")
+
+length =    input.int(14, title="MA Length")
+x      =    input.float(3.1, title="Factor For Breakout Candle")
+
+red   = #ff848a      //#ff848a // #FA8072 // #323433 // #ff848a
+green = #8cffe5      // #8cffe5 // #6DC066 // #80aebd // #8cffe5
+
+// Basic Volume Calcs //
+vol  =  volume
+bull =  close>open?vol:0 
+bear =  open>close?vol:0
+
+
+// BEAR Moving Average Calculation
+bullma = ta.sma(bull, length)
+
+// BEAR Moving Average Calculation //
+bearma = ta.sma(bear, length)
+
+// ma dif //
+vf_dif = bullma-bearma
+vf_absolute = vf_dif > 0 ? vf_dif : vf_dif * (-1)
+
+// Volume Spikes //
+gsig=ta.crossover(bull, bullma*x)?vol:na
+rsig=ta.crossover(bear, bearma*x)?vol:na
+
+// Color Calcs //
+vdClr = vf_dif > 0 ? green : red
+vClr=close>open?green:red
+
+// Plots //
+//plot(vol, color=vClr, style=plot.style_columns, title="Volume")
+//plot(bullma*2, color=green, linewidth=1, title="Bull MA")
+//plot(bearma*2, color=red, linewidth=1, title="Bear MA")
+
+plot(gsig, style=plot.style_columns, color=green, title="Bull Vol")
+plot(rsig, style=plot.style_columns, color=red, title="Bear Vol")
+
+//plot(vf_absolute/2.5, style=plot.style_area, color=vdClr, title="Difference Value")

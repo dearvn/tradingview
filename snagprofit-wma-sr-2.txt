@@ -1,0 +1,508 @@
+//@version=5
+indicator("Snagprofit WMA MA", overlay=true)
+
+
+len_wma = input.int(125, minval=1, title="Length")
+wma = ta.wma(close, len_wma)
+tf1m_wma = request.security(syminfo.tickerid, '1', wma, barmerge.gaps_on) 
+plot(tf1m_wma, title="WMA 1M", color=color.white)
+
+tf5m_wma = request.security(syminfo.tickerid, '5', wma, barmerge.gaps_on) 
+plot(tf5m_wma, title="WMA 5M", color=color.yellow)
+
+tf15m_wma = request.security(syminfo.tickerid, '15', wma, barmerge.gaps_on) 
+plot(tf15m_wma, title="WMA 15M", color=color.green)
+
+tf1h_wma = request.security(syminfo.tickerid, '60', wma, barmerge.gaps_on) 
+plot(tf1h_wma, title="WMA 1H", color=color.red)
+
+len_sma = input.int(50, minval=1, title="Moving Average")
+ma = ta.sma(close, len_sma)
+
+//up signals only if above a moving average or down if below
+up = if close > ma
+    close > high[1] 
+    
+down = if close < ma
+    close < low[1]
+
+plot(ma)
+plotshape(up, title="Up momentum", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.tiny)
+plotshape(down, title="Down momentum", style=shape.triangledown, location=location.abovebar, color=color.red, size=size.tiny)
+
+short_term_buy = false
+mid_term_buy = false
+long_term_buy = false
+if close > ma
+    if tf1m_wma > tf5m_wma
+        short_term_buy := true
+    if tf5m_wma > tf15m_wma
+        mid_term_buy := true
+    if tf15m_wma > tf1h_wma
+        long_term_buy := true
+    
+big_volume = false
+if volume[0]/volume[1] >= 3
+    big_volume := true
+    
+var string GP2 = "Display"
+string  i_tableYpos = input.string("top", "Panel position", inline = "11", options = ["top", "middle", "bottom"], group = GP2)
+string  i_tableXpos = input.string("right", "", inline = "11", options = ["left", "center", "right"], group = GP2)
+color   i_c_buy    = input.color(color.new(color.green, 30), "Buy", inline = "12", group = GP2)
+color   i_c_sell    = input.color(color.new(color.red, 10), "Sell", inline = "12", group = GP2)
+color   i_c_neutral = input.color(color.new(color.gray, 30), "Neutral", inline = "12", group = GP2)
+
+low15m = request.security(syminfo.tickerid, "15", low, barmerge.gaps_on)
+high15m = request.security(syminfo.tickerid, "15", high, barmerge.gaps_on)
+h = hour(time, "GMT-8")
+m = minute(time, "GMT-8")
+
+var low_arr = array.new_float()
+var high_arr = array.new_float()
+
+if h == 6 and m == 45
+    array.push(low_arr, low15m)
+    array.push(high_arr, high15m)
+    //if array.size(low_arr) > 2
+    //    label.new(bar_index, low, text="L:"+str.format("{0}", array.get(low_arr, array.size(low_arr)-2)), textcolor=color.yellow, style=label.style_triangleup, size=size.tiny)
+    //if array.size(high_arr) > 2
+    //    label.new(bar_index, high, text="H:"+str.format("{0}", array.get(high_arr, array.size(high_arr)-2)), textcolor=color.yellow, style=label.style_triangledown, size=size.tiny)
+
+
+if barstate.islast
+    // Table header.
+    var table panel = table.new(i_tableYpos + "_" + i_tableXpos, 6, 10)
+
+    table.cell(panel, 0, 1, "Short", bgcolor = i_c_neutral, text_color=color.white, width=4)
+    table.cell(panel, 1, 1, "Mide", bgcolor = i_c_neutral, text_color=color.white, width=4)
+    table.cell(panel, 2, 1, "Long", bgcolor = i_c_neutral, text_color=color.white, width=6)
+    table.cell(panel, 3, 1, "Big Vol", bgcolor = i_c_neutral, text_color=color.white, width=6)
+    
+    table.cell(panel, 0, 2, short_term_buy ? "Y":'N', bgcolor = i_c_neutral, text_color=color.white, width=4)
+    table.cell(panel, 1, 2, mid_term_buy ? "Y":'N', bgcolor = i_c_neutral, text_color=color.white, width=4)
+    table.cell(panel, 2, 2, long_term_buy ? "Y":'N', bgcolor = i_c_neutral, text_color=color.white, width=6)
+    table.cell(panel, 3, 2, big_volume ? "Y":'N', bgcolor = i_c_neutral, text_color=color.white, width=6)
+    
+    if array.size(low_arr) > 2
+        trend = 'Side way'
+        if array.get(high_arr, array.size(high_arr)-1) > array.get(high_arr, array.size(high_arr)-2)
+            trend := 'Up'
+        else if array.get(low_arr, array.size(low_arr)-1) < array.get(low_arr, array.size(low_arr)-2)
+            trend := 'Down'
+        table.cell(panel, 4, 1, "Trend 15m", bgcolor = i_c_neutral, text_color=color.white, width=6)
+        table.cell(panel, 4, 2, trend, bgcolor = i_c_neutral, text_color=color.white, width=6)
+    
+
+    
+    
+long_ok = big_volume and mid_term_buy
+long_not_ok = big_volume and not short_term_buy
+    
+alertcondition(long_ok, title='LONG BUY', message='LONG BUY')
+alertcondition(long_not_ok, title='LONG SELL', message='LONG SELL')
+
+l_buy1= ta.barssince(long_ok)
+l_sell1 = ta.barssince(long_not_ok)
+l_1 = l_buy1[1] > l_sell1[1] ? long_ok : na
+plotshape(l_1,title="L-Buy",text='L-B', color=color.yellow, style=shape.triangleup,location=location.bottom,size=size.small)
+
+l_buy2= ta.barssince(long_not_ok)
+l_sell2 = ta.barssince(long_ok)
+l_2 = l_buy2[1] > l_sell2[1] ? long_not_ok : na
+plotshape(l_2,title="L-Sell",text='L-S', color=color.orange, style=shape.triangledown,location=location.top,size=size.small)
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Inputs
+ExtendLines = input.bool(title='Extend previous S/R?', defval=true, tooltip='If enabled all previous SR zones will extend to the next SR zone. If disabled, historical SR zones will not be extended but active SR zones will remain extended.', group='*** General Settings ***')
+ShowLabel = input.bool(title='Show Time Frame Label?', defval=true, group='*** General Settings ***')
+label_loc = input.string(title='Label Location', defval='Right', options=['Left', 'Right'], inline='1', group='*** General Settings ***')
+label_offset = input.int(title='Right Label Offset', defval=15, inline='1', tooltip='Adjust how far to the right you\'d like the label to appear.', group='*** General Settings ***')
+LineStyleHLInput = input.string(title='S/R Line Style (H/L)', defval='Solid', options=['Solid', 'Dotted', 'Dashed'], inline='2', group='*** General Settings ***')
+LineWidthHLInput = input.int(title='S/R Line Width (H/L)', defval=1, inline='2', group='*** General Settings ***')
+LineStyleCloseInput = input.string(title='S/R Line Style (Close)', defval='Solid', options=['Solid', 'Dotted', 'Dashed'], inline='3', group='*** General Settings ***')
+LineWidthCloseInput = input.int(title='S/R Line Width (Close)', defval=1, inline='3', group='*** General Settings ***')
+
+var string LineStyleHL = na
+
+LineStyleHL := if LineStyleHLInput == 'Solid'
+    line.style_solid
+else if LineStyleHLInput == 'Dotted'
+    line.style_dotted
+else if LineStyleHLInput == 'Dashed'
+    line.style_dashed
+
+var string LineStyleClose = na
+
+LineStyleClose := if LineStyleCloseInput == 'Solid'
+    line.style_solid
+else if LineStyleCloseInput == 'Dotted'
+    line.style_dotted
+else if LineStyleCloseInput == 'Dashed'
+    line.style_dashed
+
+// Time Frame 1 = TF1
+TF1_Menu = input.string(title='Display Lines Only, With Zones, or Disable ................', defval='S/R Zones', options=['S/R', 'S/R Zones', 'Disable'], group='*** Time Frame 1 ***')
+TF1_input = input.string(title='Time Frame 1', defval='Chart', options=['Chart', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '12h', 'D', '3D', 'W', '2W', '1M'], group='*** Time Frame 1 ***')
+TF1_VolMA1Input = input.int(title='Volume MA - Threshold', defval=6, group='*** Time Frame 1 ***')
+TF1_ResLinesColor = input.color(color.new(color.red, 20), 'Resistance Lines Color', inline='1', group='*** Time Frame 1 ***')
+TF1_ResZoneColor = input.color(color.new(color.red, 90), 'Resistance Zone Color', inline='2', group='*** Time Frame 1 ***')
+TF1_SupLinesColor = input.color(color.new(color.lime, 20), ' ...................... Support Lines Color', inline='1', group='*** Time Frame 1 ***')
+TF1_SupZoneColor = input.color(color.new(color.lime, 90), ' ...................... Support Zone Color', inline='2', group='*** Time Frame 1 ***')
+TF1_Alerts = input.string(title='Alerts', defval='None', options=['None', 'Price Enters Resistance Zone', 'Price Enters Support Zone', 'Price Enters Either S/R Zone', 'Price Breaks Up Resistance', 'Price Breaks Down Support', 'Price Breaks Either S/R', 'All Alerts On'], tooltip='Select the type of alert you would like, then save settings. On chart, right click on SR indicator and click \'Add Alert\' then save. If you would like to change the alert, delete existing alert, change alert settings on indicator, then create new alert', group='*** Time Frame 1 ***')
+
+TF1 = if TF1_input == 'Chart'
+    timeframe.period
+else if TF1_input == '5m'
+    '5'
+else if TF1_input == '15m'
+    '15'
+else if TF1_input == '30m'
+    '30'
+else if TF1_input == '1h'
+    '60'
+else if TF1_input == '2h'
+    '120'
+else if TF1_input == '4h'
+    '240'
+else if TF1_input == '6h'
+    '360'
+else if TF1_input == '12h'
+    '720'
+else if TF1_input == 'D'
+    'D'
+else if TF1_input == '3D'
+    '3D'
+else if TF1_input == 'W'
+    'W'
+else if TF1_input == '2W'
+    '2W'
+else if TF1_input == '1M'
+    '1M'
+
+
+stockschart = syminfo.type == 'stock'
+futureschart = syminfo.type == 'futures'
+indexchart = syminfo.type == 'index'
+// // --------- This ensures that no plots from lower time frames will be plotted on higher time frames.
+// ————— Converts current chart resolution into a float minutes value.
+f_resInMinutes() =>
+    if stockschart or futureschart or indexchart
+        _resInMinutes = timeframe.multiplier * (timeframe.isseconds ? 1. / 60 : timeframe.isminutes ? 1. : timeframe.isdaily ? 60. * 16 : timeframe.isweekly ? 60. * 7 * 5 : timeframe.ismonthly ? 60. * 7 * 21 : na)
+        _resInMinutes
+    else
+        _resInMinutes = timeframe.multiplier * (timeframe.isseconds ? 1. / 60 : timeframe.isminutes ? 1. : timeframe.isdaily ? 60. * 24 : timeframe.isweekly ? 60. * 24 * 7 : timeframe.ismonthly ? 60. * 24 * 30.4375 : na)
+        _resInMinutes
+// ————— Returns the float minutes value of the string _res.
+f_tfResInMinutes(_res) =>
+    // _res: resolution of any TF (in "timeframe.period" string format).
+    // Dependency: f_resInMinutes().
+    request.security(syminfo.tickerid, _res, f_resInMinutes())
+
+// —————————— Determine if current timeframe is smaller that higher timeframe selected in Inputs.
+// Get higher timeframe in minutes.
+TF1InMinutes = f_tfResInMinutes(TF1)
+
+// Get current timeframe in minutes.
+currentTFInMinutes = f_resInMinutes()
+// Compare current TF to higher TF to make sure it is smaller, otherwise our plots don't make sense.
+chartOnLowerTF1 = currentTFInMinutes <= TF1InMinutes
+
+TF1_inH = str.tostring(TF1InMinutes / 60)
+TF1_text = if stockschart or futureschart
+    TF1InMinutes >= 60 and TF1InMinutes < 960 ? TF1_inH + 'h' : TF1InMinutes < 60 ? TF1 + 'm' : TF1
+else
+    TF1InMinutes >= 60 and TF1InMinutes < 1440 ? TF1_inH + 'h' : TF1InMinutes < 60 ? TF1 + 'm' : TF1
+
+//--- In order to get the left side of SR zone on higher time frames to line up directly on the bar with the fractal high or fractal low, we need to perform
+//--- a series of calculations to find the pivot high/low. Since the FractalUp or FractalDown condition is found after 2 confirming bars, the SR zone would begin
+//--- at that point (3 bars after the pivot high/low). For example, if there is a 4hr Fractal confirmed while on the 1hr chart, it would take 3 4hr bars to confirm. 
+//--- That means the high/low point could've occured anywhere between 8-12 1hr bars ago.
+// // --------- To get the correct bar_index for higher time frame lines placed on lower time frame candles, 
+// // --------- we need to calculate how many lower time frame bars are contained in the higher time frame bar, 
+// // --------- Then find the highest/lowest bar within that range of bars for bar_index on the x1 (left) coordinates of lines.
+
+// Calculate number of current TF bars in higher TF bar
+barsinTF1 = TF1InMinutes / currentTFInMinutes
+
+// Multiply the # of current TF bars in higher TF bar by 1 to provide a starting point back to start scanning, and multiply by 3 for the range of bars to scan for highs/lows
+// Round up to make integer for bar indexing
+
+TF1_bar_index = math.ceil(1 * barsinTF1)
+
+TF1_bar_index_range = math.ceil(3 * barsinTF1)
+
+// Get offset value for the highest high or lowest low found within the specified range , using [] to establish the starting point back to begin scanning past bars for highest high or lowest low. 
+// Moving the starting point back ensures it scans within the range in which the high/low was found by FractalUp/FractalDown condition.
+// Output by default is negative, make positive with absolute value for bar_index.
+// nz() forces a return of 1 in case bar_index comes back NaN
+// Adding the TFx_bar_index back in accounts for the number of bars skipped back in [].
+// First check if the number of bars back to scan for pivot high/low is going to be over the max bars back, and if so set the bar_index to the max bars back, otherwise get exact bar index value for pivot high/low.
+var int TF1_High_index = na
+var int TF1_Low_index = na
+
+if TF1_bar_index + TF1_bar_index_range > 4999
+    TF1_High_index := 4999
+    TF1_Low_index := 4999
+else
+    TF1_High_index :=  math.abs(ta.highestbars(high, nz(TF1_bar_index_range, 1)))[TF1_bar_index] + TF1_bar_index
+    TF1_Low_index := math.abs(ta.lowestbars(low, nz(TF1_bar_index_range, 1)))[TF1_bar_index] + TF1_bar_index
+
+
+// TFUp and TFDown Calculations
+
+f_tfUp(_TF_High, _TF_Vol, _TF_VolMA) =>
+    _TF_High[3] > _TF_High[4] and _TF_High[4] > _TF_High[5] and _TF_High[2] < _TF_High[3] and _TF_High[1] < _TF_High[2] and _TF_Vol[3] > _TF_VolMA[3]
+f_tfDown(_TF_Low, _TF_Vol, _TF_VolMA) =>
+    _TF_Low[3] < _TF_Low[4] and _TF_Low[4] < _TF_Low[5] and _TF_Low[2] > _TF_Low[3] and _TF_Low[1] > _TF_Low[2] and _TF_Vol[3] > _TF_VolMA[3]
+
+// Provide function for each time frame's various sources used in FractalUp and FractalDown calculations.
+
+f_tfSources(_res, _source) =>
+    request.security(syminfo.tickerid, _res, _source)
+
+// S/R  = Time Frame 1 = TF1
+
+TF1_Vol = f_tfSources(TF1, volume)
+TF1_VolMA = ta.sma(TF1_Vol, TF1_VolMA1Input)
+TF1_High = f_tfSources(TF1, high)
+TF1_Low = f_tfSources(TF1, low)
+TF1_Open = f_tfSources(TF1, open)
+TF1_Close = f_tfSources(TF1, close)
+
+TF1_Up = f_tfUp(TF1_High, TF1_Vol, TF1_VolMA)
+TF1_Down = f_tfDown(TF1_Low, TF1_Vol, TF1_VolMA)
+
+TF1_CalcFractalUp() =>
+    TF1_FractalUp = 0.0
+    TF1_FractalUp := TF1_Up ? TF1_High[3] : TF1_FractalUp[1]
+    TF1_FractalUp
+
+TF1_CalcFractalDown() =>
+    TF1_FractalDown = 0.0
+    TF1_FractalDown := TF1_Down ? TF1_Low[3] : TF1_FractalDown[1]
+    TF1_FractalDown
+
+TF1_FractalUp = request.security(syminfo.tickerid, TF1, TF1_CalcFractalUp())
+TF1_FractalDown = request.security(syminfo.tickerid, TF1, TF1_CalcFractalDown())
+
+// Zones - Current Time Frame = Time Frame 1 = TF1
+
+// Fractal Up Zones
+
+TF1_CalcFractalUpZone() =>
+    TF1_FractalUpZone = 0.0
+    TF1_FractalUpZone := TF1_Up and TF1_Close[3] >= TF1_Open[3] ? TF1_Close[3] : TF1_Up and TF1_Close[3] < TF1_Open[3] ? TF1_Open[3] : TF1_FractalUpZone[1]
+    TF1_FractalUpZone
+
+TF1_FractalUpZone = request.security(syminfo.tickerid, TF1, TF1_CalcFractalUpZone())
+TF1_ResistanceZone = TF1_FractalUpZone
+
+// Fractal Down Zones
+
+TF1_CalcFractalDownZone() =>
+    TF1_FractalDownZone = 0.0
+    TF1_FractalDownZone := TF1_Down and TF1_Close[3] >= TF1_Open[3] ? TF1_Open[3] : TF1_Down and TF1_Close[3] < TF1_Open[3] ? TF1_Close[3] : TF1_FractalDownZone[1]
+    TF1_FractalDownZone
+
+TF1_FractalDownZone = request.security(syminfo.tickerid, TF1, TF1_CalcFractalDownZone())
+TF1_SupportZone = TF1_FractalDownZone
+
+// Time Frame 1 = TF1 Resistance
+
+var TF1_UpperResistanceLine_array = array.new_line(30)
+var TF1_LowerResistanceLine_array = array.new_line(30)
+var TF1ResLabel_array = array.new_label(1)
+
+var TF1UpperResLabel_array = array.new_label(1)
+var TF1LowerResLabel_array = array.new_label(1)
+var TF1UpperSupLabel_array = array.new_label(1)
+var TF1LowerSupLabel_array = array.new_label(1)
+
+
+if (TF1_Menu == 'S/R Zones' or TF1_Menu == 'S/R') and TF1_FractalUp != TF1_FractalUp[1] and chartOnLowerTF1
+    TF1_UpperResistanceLine = line.new(x1=TF1_input != 'Chart' ? bar_index[TF1_High_index] : bar_index[3], y1=TF1_FractalUp, x2=bar_index, y2=TF1_FractalUp, color=TF1_ResLinesColor, style=LineStyleHL, width=LineWidthHLInput, extend=extend.right)
+    line.set_extend(id=array.get(TF1_UpperResistanceLine_array, 29), extend=extend.none)
+    if ExtendLines == true
+        line.set_x2(id=array.get(TF1_UpperResistanceLine_array, 29), x=TF1_input != 'Chart' ? bar_index[TF1_High_index] : bar_index[3])
+    array.push(TF1_UpperResistanceLine_array, TF1_UpperResistanceLine)
+    line.delete(array.shift(TF1_UpperResistanceLine_array))
+    TF1_LowerResistanceLine = line.new(x1=TF1_input != 'Chart' ? bar_index[TF1_High_index] : bar_index[3], y1=TF1_ResistanceZone, x2=bar_index, y2=TF1_ResistanceZone, color=TF1_ResLinesColor, style=LineStyleClose, width=LineWidthCloseInput, extend=extend.right)
+    line.set_extend(id=array.get(TF1_LowerResistanceLine_array, 29), extend=extend.none)
+    if ExtendLines == true
+        line.set_x2(id=array.get(TF1_LowerResistanceLine_array, 29), x=TF1_input != 'Chart' ? bar_index[TF1_High_index] : bar_index[3])
+    array.push(TF1_LowerResistanceLine_array, TF1_LowerResistanceLine)
+    line.delete(array.shift(TF1_LowerResistanceLine_array))
+    if ShowLabel == true and label_loc == 'Left'
+        TF1ResLabel = label.new(TF1_input != 'Chart' ? bar_index[TF1_High_index - 2] : bar_index[2], TF1_FractalUp, text=TF1_text + "(R)", color=color.new(color.white, 100), size=size.normal, style=label.style_label_right, textcolor=TF1_ResLinesColor)
+        array.push(TF1ResLabel_array, TF1ResLabel)
+        label.delete(array.shift(TF1ResLabel_array))
+        
+        TF1UpperResLabel = label.new(TF1_input != 'Chart' ? bar_index[TF1_High_index - 2] + 15 : bar_index[2], TF1_FractalUp, text=str.format("{0}", TF1_FractalUp[0]), color=color.new(color.white, 100), size=size.normal, style=label.style_label_right, textcolor=TF1_ResLinesColor)
+        array.push(TF1UpperResLabel_array, TF1UpperResLabel)
+        label.delete(array.shift(TF1UpperResLabel_array))
+        
+        TF1LowerResLabel = label.new(TF1_input != 'Chart' ? bar_index[TF1_High_index - 2] + 15 : bar_index[2], TF1_ResistanceZone, text=str.format("{0}", TF1_ResistanceZone[0]), color=color.new(color.white, 100), size=size.normal, style=label.style_label_right, textcolor=TF1_ResLinesColor)
+        array.push(TF1LowerResLabel_array, TF1LowerResLabel)
+        label.delete(array.shift(TF1LowerResLabel_array))
+        
+        
+        
+else if (TF1_Menu == 'S/R Zones' or TF1_Menu == 'S/R') and na(TF1_FractalUp != TF1_FractalUp[1]) and chartOnLowerTF1 and na(ta.barssince(TF1_FractalUp != TF1_FractalUp[1]))
+    TF1_UpperResistanceLine = line.new(x1=bar_index[3], y1=TF1_FractalUp, x2=bar_index, y2=TF1_FractalUp, color=TF1_ResLinesColor, style=LineStyleHL, width=LineWidthHLInput, extend=extend.right)
+    line.set_extend(id=array.get(TF1_UpperResistanceLine_array, 29), extend=extend.none)
+    if ExtendLines == true
+        line.set_x2(id=array.get(TF1_UpperResistanceLine_array, 29), x=bar_index[3])
+    array.push(TF1_UpperResistanceLine_array, TF1_UpperResistanceLine)
+    line.delete(array.shift(TF1_UpperResistanceLine_array))
+    TF1_LowerResistanceLine = line.new(x1=bar_index[3], y1=TF1_ResistanceZone, x2=bar_index, y2=TF1_ResistanceZone, color=TF1_ResLinesColor, style=LineStyleClose, width=LineWidthCloseInput, extend=extend.right)
+    line.set_extend(id=array.get(TF1_LowerResistanceLine_array, 29), extend=extend.none)
+    if ExtendLines == true
+        line.set_x2(id=array.get(TF1_LowerResistanceLine_array, 29), x=bar_index[3])
+    array.push(TF1_LowerResistanceLine_array, TF1_LowerResistanceLine)
+    line.delete(array.shift(TF1_LowerResistanceLine_array))
+    if ShowLabel == true and label_loc == 'Left'
+        TF1ResLabel = label.new(bar_index[3], TF1_FractalUp, text=TF1_text + "(R)", color=color.new(color.white, 100), size=size.normal, style=label.style_label_right, textcolor=TF1_ResLinesColor)
+        array.push(TF1ResLabel_array, TF1ResLabel)
+        label.delete(array.shift(TF1ResLabel_array))
+        
+        TF1UpperResLabel = label.new(bar_index[3] + 15, TF1_FractalUp, text=str.format("{0}", TF1_FractalUp[0]), color=color.new(color.white, 100), size=size.normal, style=label.style_label_right, textcolor=TF1_ResLinesColor)
+        array.push(TF1UpperResLabel_array, TF1UpperResLabel)
+        label.delete(array.shift(TF1UpperResLabel_array))
+        
+        TF1LowerResLabel = label.new(bar_index[3] + 15, TF1_ResistanceZone, text=str.format("{0}", TF1_ResistanceZone[0]), color=color.new(color.white, 100), size=size.normal, style=label.style_label_right, textcolor=TF1_ResLinesColor)
+        array.push(TF1LowerResLabel_array, TF1LowerResLabel)
+        label.delete(array.shift(TF1LowerResLabel_array))
+        
+
+if (TF1_Menu == 'S/R Zones')
+    linefill.new(array.get(TF1_UpperResistanceLine_array, 29), array.get(TF1_LowerResistanceLine_array, 29), TF1_ResZoneColor)
+
+if ShowLabel == true and (TF1_Menu == 'S/R Zones' or TF1_Menu == 'S/R') and chartOnLowerTF1 and label_loc == 'Right'
+    TF1ResLabel = label.new(bar_index + label_offset, TF1_FractalUp, text=TF1_text + "(R)", size=size.normal, style=label.style_none, textcolor=TF1_ResLinesColor)
+    array.push(TF1ResLabel_array, TF1ResLabel)
+    label.delete(array.shift(TF1ResLabel_array))
+    
+    TF1UpperResLabel = label.new(bar_index + label_offset + 15, TF1_FractalUp, text=str.format("{0}", TF1_FractalUp[0]), size=size.normal, style=label.style_none, textcolor=TF1_ResLinesColor)
+    array.push(TF1UpperResLabel_array, TF1UpperResLabel)
+    label.delete(array.shift(TF1UpperResLabel_array))
+    
+    TF1LowerResLabel = label.new(bar_index + label_offset + 15, TF1_ResistanceZone, text=str.format("{0}", TF1_ResistanceZone[0]), size=size.normal, style=label.style_none, textcolor=TF1_ResLinesColor)
+    array.push(TF1LowerResLabel_array, TF1LowerResLabel)
+    label.delete(array.shift(TF1LowerResLabel_array))
+
+// Time Frame 1 = TF1 Support
+
+var TF1_UpperSupportLine_array = array.new_line(30)
+var TF1_LowerSupportLine_array = array.new_line(30)
+var TF1SupLabel_array = array.new_label(1)
+
+if (TF1_Menu == 'S/R Zones' or TF1_Menu == 'S/R') and TF1_FractalDown != TF1_FractalDown[1] and chartOnLowerTF1
+    TF1_UpperSupportLine = line.new(x1=TF1_input != 'Chart' ? bar_index[TF1_Low_index] : bar_index[3], y1=TF1_SupportZone, x2=bar_index, y2=TF1_SupportZone, color=TF1_SupLinesColor, style=LineStyleClose, width=LineWidthCloseInput, extend=extend.right)
+    line.set_extend(id=array.get(TF1_UpperSupportLine_array, 29), extend=extend.none)
+    if ExtendLines == true
+        line.set_x2(id=array.get(TF1_UpperSupportLine_array, 29), x=TF1_input != 'Chart' ? bar_index[TF1_Low_index] : bar_index[3])
+    array.push(TF1_UpperSupportLine_array, TF1_UpperSupportLine)
+    line.delete(array.shift(TF1_UpperSupportLine_array))
+    TF1_LowerSupportLine = line.new(x1=TF1_input != 'Chart' ? bar_index[TF1_Low_index] : bar_index[3], y1=TF1_FractalDown, x2=bar_index, y2=TF1_FractalDown, color=TF1_SupLinesColor, style=LineStyleHL, width=LineWidthHLInput, extend=extend.right)
+    line.set_extend(id=array.get(TF1_LowerSupportLine_array, 29), extend=extend.none)
+    if ExtendLines == true
+        line.set_x2(id=array.get(TF1_LowerSupportLine_array, 29), x=TF1_input != 'Chart' ? bar_index[TF1_Low_index] : bar_index[3])
+    array.push(TF1_LowerSupportLine_array, TF1_LowerSupportLine)
+    line.delete(array.shift(TF1_LowerSupportLine_array))
+    if ShowLabel == true and label_loc == 'Left'
+        TF1SupLabel = label.new(TF1_input != 'Chart' ? bar_index[TF1_Low_index - 2] : bar_index[2], TF1_FractalDown, text=TF1_text + "(S)", color=color.new(color.white, 100), size=size.normal, style=label.style_label_right, textcolor=TF1_SupLinesColor)
+        array.push(TF1SupLabel_array, TF1SupLabel)
+        label.delete(array.shift(TF1SupLabel_array))
+        
+        
+        TF1UpperSupLabel = label.new(TF1_input != 'Chart' ? bar_index[TF1_High_index - 2] + 15 : bar_index[2], TF1_SupportZone, text=str.format("{0}", TF1_SupportZone[0]), color=color.new(color.white, 100), size=size.normal, style=label.style_label_right, textcolor=TF1_SupLinesColor)
+        array.push(TF1UpperSupLabel_array, TF1UpperSupLabel)
+        label.delete(array.shift(TF1UpperSupLabel_array))
+        
+        TF1LowerSupLabel = label.new(TF1_input != 'Chart' ? bar_index[TF1_High_index - 2] + 15 : bar_index[2], TF1_FractalDown, text=str.format("{0}", TF1_FractalDown[0]), color=color.new(color.white, 100), size=size.normal, style=label.style_label_right, textcolor=TF1_SupLinesColor)
+        array.push(TF1LowerSupLabel_array, TF1LowerSupLabel)
+        label.delete(array.shift(TF1LowerSupLabel_array))
+        
+        
+else if (TF1_Menu == 'S/R Zones' or TF1_Menu == 'S/R') and na(TF1_FractalDown != TF1_FractalDown[1]) and chartOnLowerTF1 and na(ta.barssince(TF1_FractalDown != TF1_FractalDown[1]))
+    TF1_UpperSupportLine = line.new(x1=bar_index[3], y1=TF1_SupportZone, x2=bar_index, y2=TF1_SupportZone, color=TF1_SupLinesColor, style=LineStyleClose, width=LineWidthCloseInput, extend=extend.right)
+    line.set_extend(id=array.get(TF1_UpperSupportLine_array, 29), extend=extend.none)
+    if ExtendLines == true
+        line.set_x2(id=array.get(TF1_UpperSupportLine_array, 29), x=bar_index[3])
+    array.push(TF1_UpperSupportLine_array, TF1_UpperSupportLine)
+    line.delete(array.shift(TF1_UpperSupportLine_array))
+    TF1_LowerSupportLine = line.new(x1=bar_index[3], y1=TF1_FractalDown, x2=bar_index, y2=TF1_FractalDown, color=TF1_SupLinesColor, style=LineStyleHL, width=LineWidthHLInput, extend=extend.right)
+    line.set_extend(id=array.get(TF1_LowerSupportLine_array, 29), extend=extend.none)
+    if ExtendLines == true
+        line.set_x2(id=array.get(TF1_LowerSupportLine_array, 29), x=bar_index[3])
+    array.push(TF1_LowerSupportLine_array, TF1_LowerSupportLine)
+    line.delete(array.shift(TF1_LowerSupportLine_array))
+    if ShowLabel == true and label_loc == 'Left'
+        TF1SupLabel = label.new(bar_index[3], TF1_FractalDown, text=TF1_text + "(S)", color=color.new(color.white, 100), size=size.normal, style=label.style_label_right, textcolor=TF1_SupLinesColor)
+        array.push(TF1SupLabel_array, TF1SupLabel)
+        label.delete(array.shift(TF1SupLabel_array))
+
+        TF1UpperSupLabel = label.new(bar_index[3] + 15, TF1_SupportZone, text=str.format("{0}", TF1_SupportZone[0]), color=color.new(color.white, 100), size=size.normal, style=label.style_label_right, textcolor=TF1_SupLinesColor)
+        array.push(TF1UpperSupLabel_array, TF1UpperSupLabel)
+        label.delete(array.shift(TF1UpperSupLabel_array))
+        
+        TF1LowerSupLabel = label.new(bar_index[3] + 15, TF1_FractalDown, text=str.format("{0}", TF1_FractalDown[0]), color=color.new(color.white, 100), size=size.normal, style=label.style_label_right, textcolor=TF1_SupLinesColor)
+        array.push(TF1LowerSupLabel_array, TF1LowerSupLabel)
+        label.delete(array.shift(TF1LowerSupLabel_array))
+        
+if (TF1_Menu == 'S/R Zones')
+    linefill.new(array.get(TF1_UpperSupportLine_array, 29), array.get(TF1_LowerSupportLine_array, 29), TF1_SupZoneColor)
+
+if ShowLabel == true and (TF1_Menu == 'S/R Zones' or TF1_Menu == 'S/R') and chartOnLowerTF1 and label_loc == 'Right'
+    TF1SupLabel = label.new(bar_index + label_offset, TF1_FractalDown, text=TF1_text + "(S)", size=size.normal, style=label.style_none, textcolor=TF1_SupLinesColor)
+    array.push(TF1SupLabel_array, TF1SupLabel)
+    label.delete(array.shift(TF1SupLabel_array))
+    
+    TF1UpperSupLabel = label.new(bar_index + label_offset + 15, TF1_SupportZone, text=str.format("{0}", TF1_SupportZone[0]), size=size.normal, style=label.style_none, textcolor=TF1_SupLinesColor)
+    array.push(TF1UpperSupLabel_array, TF1UpperSupLabel)
+    label.delete(array.shift(TF1UpperSupLabel_array))
+    
+    TF1LowerSupLabel = label.new(bar_index + label_offset + 15, TF1_FractalDown, text=str.format("{0}", TF1_FractalDown[0]), size=size.normal, style=label.style_none, textcolor=TF1_SupLinesColor)
+    array.push(TF1LowerSupLabel_array, TF1LowerSupLabel)
+    label.delete(array.shift(TF1LowerSupLabel_array))
+
+
+// ---------------- Alerts
+// TF1
+PriceEntersTF1ResZone = ta.crossover(close, TF1_ResistanceZone)
+PriceTestResAsSupportTF1 = ta.crossunder(close, TF1_FractalUp)
+PriceEntersTF1SupZone = ta.crossunder(close, TF1_SupportZone)
+PriceTestSupportAsResTF1 = ta.crossover(close, TF1_FractalDown)
+PriceBreakingTF1Resistance = ta.crossover(close, TF1_FractalUp)
+PriceBreakingTF1Support = ta.crossunder(close, TF1_FractalDown)
+
+if (TF1_Alerts == 'Price Enters Resistance Zone' or TF1_Alerts == 'Price Enters Either S/R Zone' or TF1_Alerts == 'All Alerts On') and PriceEntersTF1ResZone
+    alert(syminfo.ticker + ' - Price enters ' + TF1_text + ' Resistance Zone', alert.freq_once_per_bar)
+
+if (TF1_Alerts == 'Price Enters Resistance Zone' or TF1_Alerts == 'Price Enters Either S/R Zone' or TF1_Alerts == 'All Alerts On') and PriceTestResAsSupportTF1
+    alert(syminfo.ticker + ' - Price is testing ' + TF1_text + ' resistance as support', alert.freq_once_per_bar)
+
+if (TF1_Alerts == 'Price Enters Support Zone' or TF1_Alerts == 'Price Enters Either S/R Zone' or TF1_Alerts == 'All Alerts On') and PriceEntersTF1SupZone
+    alert(syminfo.ticker + ' - Price enters ' + TF1_text + ' Support Zone', alert.freq_once_per_bar)
+
+if (TF1_Alerts == 'Price Enters Support Zone' or TF1_Alerts == 'Price Enters Either S/R Zone' or TF1_Alerts == 'All Alerts On') and PriceTestSupportAsResTF1
+    alert(syminfo.ticker + ' - Price is testing ' + TF1_text + ' support as resistance', alert.freq_once_per_bar)
+
+if (TF1_Alerts == 'Price Breaks Resistance' or TF1_Alerts == 'Price Breaks Either S/R' or TF1_Alerts == 'All Alerts On') and PriceBreakingTF1Resistance
+    alert(syminfo.ticker + ' - Price is breaking out ' + TF1_text + ' Resistance', alert.freq_once_per_bar)
+
+if (TF1_Alerts == 'Price Breaks Support' or TF1_Alerts == 'Price Breaks Either S/R' or TF1_Alerts == 'All Alerts On') and PriceBreakingTF1Support
+    alert(syminfo.ticker + ' - Price is breaking down ' + TF1_text + ' Support', alert.freq_once_per_bar)
+    
+    
+// Res
+res_up = close[1] >= TF1_ResistanceZone[0] and close < TF1_ResistanceZone[0]
+    
+sup_down = close[1] <= TF1_SupportZone[0] and close > TF1_SupportZone[0]
+
+
+plotshape(sup_down, title="Up Sup", style=shape.triangleup, location=location.belowbar, color=color.orange, size=size.small)
+plotshape(res_up, title="Down Res", style=shape.triangledown, location=location.abovebar, color=color.orange, size=size.small)
+
+
+

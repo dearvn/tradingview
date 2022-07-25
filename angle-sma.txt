@@ -1,0 +1,36 @@
+//@version=5
+indicator("Snag-Angle Trend Signal", overlay=true)
+
+calcDegree(src, period) =>
+    rad2degree = 180 / 3.14159265359  
+    ang = rad2degree * math.atan((src[0] - src[period]) / ta.atr(period))
+    ang
+
+show  = input.bool(true, title="Show Line", group="angles setting")
+i_showLabel                 = input.bool(true, title="Show label", group="angles setting")
+spessore= input.int(1, title='Line thickness', group="angles setting")
+colore= input.color(color.blue, title='Line color', group="angles setting")
+verde= input.int(20, title="higher degrees", group="angles setting")
+colore1= input.color(#00ff0a, title='color by higher degrees', group="angles setting")
+rosso=  input.int(-20, title="lower degrees", group="angles setting")
+colore2= input.color(#ff0000 , title='color by lower degrees', group="angles setting")
+colore3=  input.color(color.orange , title='intermediate color between upper and lower grades', group="angles setting")
+len = 30
+ma5 = ta.sma(hl2, 5)
+//plot(ma5, color=color.yellow)
+//ma10 = ta.sma(close, 10)
+//plot(ma10, color=color.white)
+//ma20 = ta.sma(close, 20)
+//plot(ma20, color=color.green)
+angle5 = math.round(calcDegree(ma5, len))
+cCandle5 =  angle5 > verde ? colore1 : angle5 <= verde and angle5 >= rosso ? colore3 : angle5 < rosso ? colore2 : colore2
+barcolor(cCandle5, title = "bar color")
+
+line l5 = na
+line.delete(l5[1])
+l5 := line.new( show ? bar_index[len] : na, hl2[len], bar_index, hl2, color=colore, width= spessore) 
+
+if (i_showLabel)
+    label lab5 = na
+    label.delete(lab5[1])
+    lab5 := label.new(bar_index[len], angle5 < angle5[len] ?  high[len]  : low[len] , text= str.tostring(angle5) + '°', color=cCandle5, style=  angle5 < angle5[len] ?  label.style_label_down  : label.style_label_up )

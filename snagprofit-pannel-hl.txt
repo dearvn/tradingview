@@ -1,0 +1,294 @@
+//@version=5
+indicator(title = "Snagprofit Highs Lows", overlay = true)
+
+// —————————— Constants ————————————————————
+
+// Colors
+var color GREY		= #212121
+var color WHITE		= #f5f5f5
+
+// Label Styles
+var string CENTER	= label.style_label_center
+
+// Label Sizes
+var string TINY		= size.tiny
+var string SMALL	= size.small
+var string NORMAL	= size.normal
+var string LARGE	= size.large
+var string HUGE		= size.huge
+
+// Label Text Algin
+var string A_LEFT	= text.align_left
+
+// Label Y Locations
+var string HTFH		= "Highest TF High"
+var string HTFL		= "Highest TF Low"
+var string MTFH		= "Middle TF High"
+var string MTFL		= "Middle TF Low"
+var string LTFH		= "Lowest TF High"
+var string LTFL		= "Lowest TF Low"
+
+// —————————— User Input ———————————————————
+
+_1				= input.bool(title = "═════ TimeFrame Settings ══════════",	defval = true)
+i_showHighest	= input.bool(title = "Show Highest TimeFrame?",				defval = true)
+i_highestTF		= input.timeframe(title = "Highest TimeFrame",				defval = 'D')
+i_showMiddle	= input.bool(title = "Show Middle TimeFrame?",				defval = true)
+i_middleTF		= input.timeframe(title = "Middle TimeFrame",				defval = '60')
+i_showLowest	= input.bool(title = "Show Lowest TimeFrame?",				defval = true)
+i_lowestTF		= input.timeframe(title = "Lowest TimeFrame",				defval = '15')
+
+_2				= input.bool(title = "═════ Plot Settings ══════════",		defval = true)
+i_labelY		= input.string(title = "Info Label Y Position",				defval = LTFH,		options = [HTFH, HTFL, MTFH, MTFL, LTFH, LTFL])
+i_labelColor	= input.color(title = "Info Label Color",					defval = color.new(GREY, 20))
+i_textColor		= input.color(title = "Info Label Text Color",				defval = color.new(WHITE, 20))
+i_labelOffset	= input.int(title = "Info Label X Offset",					defval = 20,		minval	= 5,	maxval = 50,	step = 5)
+i_labelSize		= input.string(title = "Info Label Size",					defval = NORMAL,	options = [TINY, SMALL, NORMAL, LARGE, HUGE])
+
+// —————————— Variables ————————————————————
+
+
+var int highestDirection		= 0
+var int maximumArraySize		= 2
+var int labelX					= 0
+
+var float highestHigh			= 0.0
+var float middleHigh			= 0.0
+var float lowestHigh			= 0.0
+var float highestLow			= 0.0
+var float middleLow				= 0.0
+var float lowestLow				= 0.0
+var float resolutionInMinutes	= 0.0
+var float labelY				= 0.0
+
+var bool isHighestHigh			= false
+var bool isMiddleHigh			= false
+var bool isLowestHigh			= false
+var bool isHighestLow			= false
+var bool isMiddleLow			= false
+var bool isLowestLow			= false
+
+var label infoLabel				= na
+
+var float[] highestArray		= array.new_float(0)
+var float[] middleArray			= array.new_float(0)
+var float[] lowestArray			= array.new_float(0)
+
+string labelText				= "Highs / Lows Info\n══════════\n\n"
+
+// —————————— Cleanup ——————————————————————
+
+label.delete(infoLabel)
+
+// —————————— Functions ————————————————————
+
+// Function to converts current chart resolution into a float minutes value
+f_resolutionInMinutes() =>
+
+	_resolutionInMinutes	= timeframe.multiplier * (
+	  timeframe.isseconds	? 1.0 / 60				:
+	  timeframe.isminutes	? 1.0					:
+	  timeframe.isdaily		? 60.0 * 24				:
+	  timeframe.isweekly	? 60.0 * 24				:
+	  timeframe.ismonthly	? 60.0 * 24 * 30.4375	:
+	  na
+	  )
+
+// Function to set label position in future
+f_setX(_time, _resolutionInMinutes, _offset) =>
+
+	int _labelX	= int(_time + (_resolutionInMinutes * 60 * 1000 * _offset))
+
+// Function to get higher timeframes highs and lows
+f_getHighLow(_ticker, _resolution, _source, _occurrence) =>
+
+	float _value	= request.security(_ticker, _resolution, _source[_occurrence], gaps = barmerge.gaps_off, lookahead = barmerge.lookahead_on)
+
+// Function to check if higher timeframes highs and lows location are equal to highs and lows on current timeframe
+f_isHighLow(_value, _source) =>
+
+	bool _isHighLow	= _value == _source
+
+// Function to store higher timeframes highs and lows in array
+f_addToArray(_array, _value) =>
+
+	array.unshift(_array, _value)
+
+	if array.size(_array) > maximumArraySize
+
+		array.pop(_array)
+
+// Function to get values from array and show values in infoLabel
+f_getValue(_array, _i) =>
+
+	if array.size(_array) >= 2
+
+		float _value	= array.get(_array, _i)
+
+// Function to put the resolution in more readable format
+f_resolutionToText(_resolution) =>
+
+	string _resolutionToText	=
+	  _resolution == "1"	? "1 Minute"	:
+	  _resolution == "3"	? "3 Minutes"	:
+	  _resolution == "5"	? "5 Minutes"	:
+	  _resolution == "15"	? "15 Minutes"	:
+	  _resolution == "30"	? "30 Minutes"	:
+	  _resolution == "45"	? "45 Minutes"	:
+	  _resolution == "60"	? "1 Hour"		:
+	  _resolution == "120"	? "2 Hours"		:
+	  _resolution == "180"	? "3 Hours"		:
+	  _resolution == "240"	? "4 Hours"		:
+	  _resolution == "360"	? "6 Hours"		:
+	  _resolution == "480"	? "8 Hours"		:
+	  _resolution == "720"	? "12 Hours"	:
+	  _resolution == "D"	? "1 Day"		:
+	  _resolution == "1D"	? "1 Day"		:
+	  _resolution == "2D"	? "2 Days"		:
+	  _resolution == "3D"	? "3 Days"		:
+	  _resolution == "4D"	? "4 Days"		:
+	  _resolution == "W"	? "1 Week"		:
+	  _resolution == "1W"	? "1 Week"		:
+	  _resolution == "M"	? "1 Month"		:
+	  _resolution == "1M"	? "1 Month"		:
+	  _resolution == "2M"	? "2 Months"	:
+	  "Unknown"
+
+f_labelText(_array, _resolution) =>
+
+	float _value1				= f_getValue(_array, 0)
+	float _value2				= f_getValue(_array, 1)
+
+	// Put highest timeframe in a more readable format
+	string _resolutionToText	= f_resolutionToText(_resolution)
+
+	// Find highest timeframe highest and lowest value
+	float _highestValue			= _value1 > _value2 ? _value1 : _value2
+	float _lowestValue			= _value1 < _value2 ? _value1 : _value2
+
+	string _highestText			= _resolutionToText + " High : " + str.tostring(_highestValue) + "\n"
+	string _lowestText			= _resolutionToText + " Low  : " + str.tostring(_lowestValue) + "\n"
+
+	[_highestText, _lowestText]
+
+// Function to set Info Label Y Position
+f_labelY(_position) =>
+
+	float _y	= 0.0
+
+	if _position == "Highest TF High"
+
+		_y	:= highestHigh
+
+	else if _position == "Highest TF Low"
+
+		_y	:= highestLow
+
+	else if _position == "Middle TF High"
+
+		_y	:= middleHigh
+
+	else if _position == "Middle TF Low"
+
+		_y	:= middleLow
+
+	else if _position == "Lowest TF High"
+
+		_y	:= lowestHigh
+
+	else if _position == "Lowest TF Low"
+
+		_y	:= lowestLow
+
+	_y
+
+// Function to draw label
+f_drawLabel(_x, _y, _text, _xloc, _color, _style, _textcolor, _size, _textalign) =>
+
+	label.new(
+	  x			= _x,
+	  y			= _y,
+	  text		= _text,
+	  xloc		= _xloc,
+	  color		= _color,
+	  style		= _style,
+	  textcolor	= _textcolor,
+	  size		= _size,
+	  textalign	= _textalign
+	  )
+
+// —————————— Calculations —————————————————
+
+// Convert current chart resolution into a float minutes value
+resolutionInMinutes	:= f_resolutionInMinutes()
+
+// Set label position in future
+labelX				:= f_setX(timenow, resolutionInMinutes, i_labelOffset)
+
+// Get higher timeframes highs
+highestHigh			:= f_getHighLow(syminfo.tickerid, i_highestTF, high, 0)
+middleHigh			:= f_getHighLow(syminfo.tickerid, i_middleTF, high, 0)
+lowestHigh			:= f_getHighLow(syminfo.tickerid, i_lowestTF, high, 0)
+
+// Get higher timeframes low
+highestLow			:= f_getHighLow(syminfo.tickerid, i_highestTF, low, 0)
+middleLow			:= f_getHighLow(syminfo.tickerid, i_middleTF, low, 0)
+lowestLow			:= f_getHighLow(syminfo.tickerid, i_lowestTF, low, 0)
+
+// Check if higher timeframes highs are equal to highs on current timeframe
+isHighestHigh		:= f_isHighLow(highestHigh, high)
+isMiddleHigh		:= f_isHighLow(middleHigh, high)
+isLowestHigh		:= f_isHighLow(lowestHigh, high)
+
+// Check if higher timeframes lows are equal to lows on current timeframe
+isHighestLow		:= f_isHighLow(highestLow, low)
+isMiddleLow			:= f_isHighLow(middleLow, low)
+isLowestLow			:= f_isHighLow(lowestLow, low)
+
+// Set Info Label Y Position
+labelY				:= f_labelY(i_labelY)
+
+// —————————— Logic ————————————————————————
+
+// Store higher timeframes highs and lows in array
+if isHighestHigh or isHighestLow
+
+	f_addToArray(highestArray, isHighestHigh ? highestHigh : highestLow)
+
+if isMiddleHigh or isMiddleLow
+
+	f_addToArray(middleArray, isMiddleHigh ? middleHigh : middleLow)
+
+if isLowestHigh or isLowestLow
+
+	f_addToArray(lowestArray, isLowestHigh ? lowestHigh : lowestLow)
+
+// Get values from highest timeframe array and show values in infoLabel
+if i_showHighest
+	if array.size(highestArray) >= maximumArraySize
+
+		[highestText, lowestText]	= f_labelText(highestArray, i_highestTF)
+
+		labelText	:= labelText + highestText
+		labelText	:= labelText + lowestText
+		labelText	:= labelText + "\n"
+
+if i_showMiddle
+	if array.size(middleArray) >= maximumArraySize
+
+		[highestText, lowestText]	= f_labelText(middleArray, i_middleTF)
+
+		labelText	:= labelText + highestText
+		labelText	:= labelText + lowestText
+		labelText	:= labelText + "\n"
+
+if i_showLowest
+	if array.size(lowestArray) >= maximumArraySize
+
+		[highestText, lowestText]	= f_labelText(lowestArray, i_lowestTF)
+
+		labelText	:= labelText + highestText
+		labelText	:= labelText + lowestText
+
+// Display info label
+infoLabel	:= f_drawLabel(labelX, labelY, labelText, xloc.bar_time, i_labelColor, CENTER, i_textColor, i_labelSize, A_LEFT)

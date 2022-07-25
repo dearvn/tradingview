@@ -1,0 +1,11 @@
+// @version=5
+indicator(title="Snagprofit Balance Volume Oscillator")
+//src = close
+length=input.int(14)
+obv(close) => ta.cum(ta.change(close) > 0 ? volume : ta.change(close) < 0 ? -volume : 0*volume)
+os=obv(close)
+obv_osc = (os - ta.ema(os,length))
+obc_color=obv_osc > 0 ? color.yellow : color.red
+plot(obv_osc, color=obc_color, title="OBV")
+hline(0)
+

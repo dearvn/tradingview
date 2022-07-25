@@ -1,0 +1,47 @@
+//@version=5
+indicator("Snagprofit High Low Points", "Fib HL", overlay=true)
+
+h_left_min          =      input.int(title="Count candle Min", defval=8,maxval=15,group="Custom Inputs")
+h_left              =      input.int(title="Count candle Max", defval=16,maxval=30)
+
+
+h_left_low_min      =      ta.lowest(h_left_min)
+h_left_low          =      ta.lowest(h_left)
+
+h_left_high_min     =      ta.highest(h_left_min)
+h_left_high         =      ta.highest(h_left)
+
+newlow_min          =      low <= h_left_low_min
+newlow              =      low <= h_left_low
+
+newhigh_min         =      high >= h_left_high_min
+newhigh             =      high >= h_left_high
+
+central_bar_low_min =      low[h_left_min]
+central_bar_low     =      low[h_left]
+
+central_bar_high_min =     high[h_left_min]
+central_bar_high     =     high[h_left]
+
+
+full_zone_low_min   =      ta.lowest(h_left_min * 2)
+full_zone_low       =      ta.lowest(h_left * 2)
+
+full_zone_high_min  =      ta.highest(h_left_min * 2)
+full_zone_high      =      ta.highest(h_left * 2)
+
+
+highest_bar_min     =      central_bar_high_min >= full_zone_high_min
+highest_bar         =      central_bar_high >= full_zone_high
+
+lowest_bar_min      =      central_bar_low_min <= full_zone_low_min
+lowest_bar          =      central_bar_low <= full_zone_low
+
+plotshape(highest_bar_min ? -1 : 0,title="Weak High", offset=-h_left_min, style=shape.circle, location=location.abovebar, color=color.green, size=size.tiny)
+plotshape(lowest_bar_min ? 1 : 0,title="Weak Low", offset=-h_left_min, style=shape.circle, location=location.belowbar, color=color.green, size=size.tiny)
+
+
+plotshape(highest_bar ? -1 : 0,title="Strong High", offset=-h_left, style=shape.circle, location=location.abovebar, color=color.yellow, size=size.tiny)
+plotshape(lowest_bar ? 1 : 0,title="Strong Low", offset=-h_left, style=shape.circle, location=location.belowbar, color=color.yellow, size=size.tiny)
+
+

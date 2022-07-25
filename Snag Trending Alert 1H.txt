@@ -1,0 +1,102 @@
+//@version=5
+indicator("SnagProfit Trending 1h", overlay = true)
+
+
+f_RoundUp(number, decimals) =>
+    factor = math.pow(10, decimals)
+    math.ceil(number * factor) / factor
+    
+f_nDecimals(_in) =>
+    n  = int(na), s = str.tostring(_in), p = str.pos(s, ".")
+    n := na(str.tonumber(s)) ? int(na) : na(p) ? 0 :
+     str.length(str.substring(s, p + 1))
+
+_n = f_nDecimals(close)
+
+var string GP2 = "Display"
+
+string  i_tableYpos = input.string("top", "Panel position", inline = "11", options = ["top", "middle", "bottom"], group = GP2)
+string  i_tableXpos = input.string("right", "", inline = "11", options = ["left", "center", "right"], group = GP2)
+color   i_c_buy    = input.color(color.new(color.green, 30), "Buy", inline = "12", group = GP2)
+color   i_c_sell    = input.color(color.new(color.red, 10), "Sell", inline = "12", group = GP2)
+color   i_c_neutral = input.color(color.new(color.gray, 30), "Neutral", inline = "12", group = GP2)
+
+
+var table panel = table.new(i_tableYpos + "_" + i_tableXpos, 6, 10)
+
+ema1h_5 = ta.ema(close, 5)
+ema1h_10 = ta.ema(close, 10)
+ema1h_20 = ta.ema(close, 20)
+can_buy_1h = ema1h_5 > ema1h_10 and ema1h_10 > ema1h_20 and (open > ema1h_5 or close > ema1h_5)
+can_sell_1h = (ema1h_5 < ema1h_10) or (ema1h_5 < ema1h_10 and ema1h_10 < ema1h_20 and (open < ema1h_5 or close < ema1h_5))
+
+
+table.cell(panel, 0, 0, height=10)
+
+
+long_trend_ok = can_buy_1h
+if long_trend_ok
+    table.cell(panel, 0, 2, "Long Trend:", text_color=color.white, text_size=size.large)
+    table.cell(panel, 1, 2, "OK CALL", text_color=color.green, width=14, text_size=size.large)
+    
+long_trend_not_ok = can_sell_1h
+if long_trend_not_ok
+    table.cell(panel, 0, 2, "Long Trend:", text_color=color.white, text_size=size.large)
+    table.cell(panel, 1, 2, "NO CALL", text_color=color.red, width=14, text_size=size.large)
+    
+alertcondition(long_trend_ok, title='LONG TRENDING BUY', message='LONG TRENDING BUY')
+alertcondition(long_trend_not_ok, title='LONG TRENDING SELL', message='LONG TRENDING SELL')
+
+
+var show_l = display.all
+
+l_buy1= ta.barssince(long_trend_ok)
+l_sell1 = ta.barssince(long_trend_not_ok)
+l_1 = l_buy1[1] > l_sell1[1] ? long_trend_ok : na
+plotshape(l_1,title="L-Buy",text='L-B', color=color.yellow, style=shape.triangleup,location=location.bottom,size=size.small, display=show_l)
+
+l_buy2= ta.barssince(long_trend_not_ok)
+l_sell2 = ta.barssince(long_trend_ok)
+l_2 = l_buy2[1] > l_sell2[1] ? long_trend_not_ok : na
+plotshape(l_2,title="L-Sell",text='L-SELL', color=color.orange, style=shape.triangledown,location=location.top,size=size.small, display=show_l)
+
+
+var count_buy = 0
+var price_buy = array.new_float()
+var time_buy = array.new_int()
+if l_1
+    count_buy := count_buy + 1
+    array.push(price_buy, close)
+    array.push(time_buy, time)
+
+var count_sell = 0
+var price_sell = array.new_float()
+var time_sell = array.new_int()
+if l_2
+    count_sell := count_sell + 1
+    array.push(price_sell, close)
+    array.push(time_sell, time)
+    
+if barstate.islast
+    buy = array.get(price_buy, count_buy-1)
+    gain = close - buy
+    txt_status_color = color.green
+    txt_status = 'OPEN'
+    if array.get(time_sell, count_sell-1) > array.get(time_buy, count_buy-1)
+        sell = array.get(price_sell, count_sell-1)
+        gain := sell - buy
+        txt_status_color := color.gray
+        txt_status := 'CLOSED'
+    txt_color = color.green
+    pct = f_RoundUp(gain/buy*100, 2)
+    if gain < 0
+        txt_color := color.red
+        
+    currency_symbol = syminfo.currency
+    lbl = str.format("${0} ({1}%)", gain, pct)
+    if currency_symbol == 'VND'
+        lbl := str.format("{0}₫ ({1}%)", gain, pct)
+
+    table.cell(panel, 0, 3, "Gain/Loss:", text_color=color.yellow, text_size=size.large)
+    table.cell(panel, 1, 3, lbl, text_color=txt_color, width=10, text_size=size.large)
+    table.cell(panel, 2, 3, txt_status, text_color=txt_status_color, width=4, text_size=size.normal)

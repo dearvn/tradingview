@@ -1,0 +1,89 @@
+//@version=5
+indicator("Snagprofit Trend Line", max_bars_back = 1000, overlay=true)
+limit = input.int(title="Bars Limit", defval=100, minval=10, maxval=500, step=2)
+rng = input.int(title="Segment Range", defval=55, minval=1, maxval=200, step=1)
+term = input.int(title="Fractals Period", defval=15, minval=3, maxval=999, step=2)
+ray = input.string(title="Ray Style", defval="Right", options=["None", "Both", "Left", "Right"])
+show_label = input.string(title="Target Label", options=["Label", "NoLabel"], defval="Label")
+channel = input.string(title="Channel Dig", options=["Channel", "NoChannel"], defval="NoChannel")
+ray := ray == 'None' ? extend.none : ray == 'Left' ? extend.left : ray == 'Right' ? extend.right : ray == "Both" ? extend.both : extend.none
+pi = 3.141592653589793
+mid = int(term / 2) + 1
+limit_gap(limit) => 
+    if timeframe.isseconds
+        timeframe.multiplier * limit * 1000
+    else if timeframe.isminutes
+        timeframe.multiplier * limit * 1000 * 60
+    else if timeframe.isdaily
+        timeframe.multiplier * limit * 1000 * 86400
+    else if timeframe.isweekly
+        limit * 1000 * 86400 * 7
+    else if timeframe.ismonthly
+        limit * 1000 * 86400 * 30.5
+var limit_start = timenow - limit_gap(limit)
+ang_cal(x1, y1, x2, y2) => math.atan((y2-y1)/(x2-x1))/pi*180
+draw(dat, idx, is_up) =>
+    ang = 0.0
+    maxv = 90.0
+    maxk = 0
+    if time > limit_start
+        for i = 0 to rng - 1
+            if not na(dat[i])
+                ang := ang_cal(bar_index[i], dat[i], bar_index, dat)
+                ang := is_up ? ang : -ang
+                if ang < maxv
+                    maxk := i
+                    maxv := ang
+        if maxk > 0
+            [is_up ? maxv : -maxv, line.new(bar_index[maxk] - mid, dat[maxk], bar_index - mid, dat, color = is_up ? color.lime : color.yellow, extend=ray)]
+[ref_x, ref_h, ref_l] = if barstate.islast
+    [bar_index, high, low]
+label_style(flag, is_up) =>
+    f = is_up ? flag : 4 - flag
+    f == 0 ? 'llwrg' : f == 1 ? 'luplf' : f == 2 ? 'ldn' : f == 3 ? 'lup' : f == 4 ? 'llwlf' : 'luprg'
+slim_line(ang, lin, is_up) =>
+    ref_ang = 0.0
+    lin_price = 0.0
+    style_flag = 0
+    lab = label(na)
+    for i = 0 to limit - 1
+        if not na(lin[i]) and not na(ang[i])
+            ref_ang := ang_cal(line.get_x1(lin[i]), line.get_y1(lin[i]), ref_x, is_up ? ref_h : ref_l)
+            lin_price := line.get_price(lin[i], ref_x)
+            if math.abs(ref_ang - ang[i]) < 20 and math.abs((is_up ? ref_h : ref_l) - lin_price) < math.max(high - low, 10) * 2
+                if show_label == 'Label'
+                    lab := label.new(ref_x, lin_price, str.tostring(int(lin_price*100)/100), style = label_style(style_flag, is_up), color=is_up ? color.lime : color.yellow, size=size.small)
+                    style_flag := style_flag < 4 ? style_flag + 1 : 0
+            if math.abs(ref_ang - ang[i]) > 15
+                line.set_style(lin[i], line.style_dotted)
+                [lin_price, lab]
+adjust_label(lab) =>
+    for i = 0 to 10
+        if label.get_x(lab[i]) < ref_x
+            label.delete(lab)
+[idx_up, frac_up] = if ta.highest(term) == high[mid]
+    [bar_index[mid], high[mid]]
+[idx_dn, frac_dn] = if ta.lowest(term) == low[mid]
+    [bar_index[mid], low[mid]]
+[up_ang, up_lin] = draw(frac_up, idx_up, true)
+[dn_ang, dn_lin] = draw(frac_dn, idx_dn, false)
+[up_tgt, up_lab] = slim_line(up_ang, up_lin, true)
+[dn_tgt, dn_lab] = slim_line(dn_ang, dn_lin, false)
+adjust_label(up_lab)
+adjust_label(dn_lab)
+channel_dig(up_ang, up_lin, dn_ang, dn_lin) =>
+    sn = 1
+    for i = 0 to limit - 1
+        for j = 0 to limit -1
+            if not na(up_ang[i]) and not na(dn_ang[j]) and math.abs(up_ang[i] - dn_ang[j]) < 0.5
+                line.set_width(up_lin[i], 4)
+                line.set_width(dn_lin[j], 4)
+                label.new(line.get_x1(up_lin[i]), line.get_y1(up_lin[i]), text='CH '+str.tostring(sn), style='llwrg', color=color.yellow)
+                label.new(line.get_x1(dn_lin[j]), line.get_y1(dn_lin[j]), text='CH '+str.tostring(sn), style='luprg', color=color.lime)
+                sn := sn + 1
+if channel == 'Channel'
+    channel_dig(up_ang, up_lin, dn_ang, dn_lin)
+    
+alertcondition(high >= up_tgt or low <= dn_tgt, title='Trend line is on fire', message='One of lines is touched')
+
+

@@ -1,0 +1,264 @@
+//@version=5
+indicator("SnagProfit Logic 2H 4H", overlay = true)
+
+
+stockschart = syminfo.type == 'stock'
+futureschart = syminfo.type == 'futures'
+indexchart = syminfo.type == 'index'
+// // --------- This ensures that no plots from lower time frames will be plotted on higher time frames.
+// ————— Converts current chart resolution into a float minutes value.
+f_resInMinutes() =>
+    if stockschart or futureschart or indexchart
+        _resInMinutes = timeframe.multiplier * (timeframe.isseconds ? 1. / 60 : timeframe.isminutes ? 1. : timeframe.isdaily ? 60. * 16 : timeframe.isweekly ? 60. * 7 * 5 : timeframe.ismonthly ? 60. * 7 * 21 : na)
+        _resInMinutes
+    else
+        _resInMinutes = timeframe.multiplier * (timeframe.isseconds ? 1. / 60 : timeframe.isminutes ? 1. : timeframe.isdaily ? 60. * 24 : timeframe.isweekly ? 60. * 24 * 7 : timeframe.ismonthly ? 60. * 24 * 30.4375 : na)
+        _resInMinutes
+// ————— Returns the float minutes value of the string _res.
+f_tfResInMinutes(_res) =>
+    // _res: resolution of any TF (in "timeframe.period" string format).
+    // Dependency: f_resInMinutes().
+    request.security(syminfo.tickerid, _res, f_resInMinutes())
+
+f_tfSources(_res, _source) =>
+    request.security(syminfo.tickerid, _res, _source)
+
+f_tfUp(_TF_High, _TF_Vol, _TF_VolMA) =>
+    _TF_High[3] > _TF_High[4] and _TF_High[4] > _TF_High[5] and _TF_High[2] < _TF_High[3] and _TF_High[1] < _TF_High[2] and _TF_Vol[3] > _TF_VolMA[3]
+
+f_tfDown(_TF_Low, _TF_Vol, _TF_VolMA) =>
+    _TF_Low[3] < _TF_Low[4] and _TF_Low[4] < _TF_Low[5] and _TF_Low[2] > _TF_Low[3] and _TF_Low[1] > _TF_Low[2] and _TF_Vol[3] > _TF_VolMA[3]
+
+RoundUp(number, decimals) =>
+    factor = math.pow(10, decimals)
+    math.ceil(number * factor) / factor
+
+var string GP2 = "Display"
+string  i_tableYpos = input.string("middle", "Panel position", inline = "11", options = ["top", "middle", "bottom"], group = GP2)
+string  i_tableXpos = input.string("right", "", inline = "11", options = ["left", "center", "right"], group = GP2)
+color   i_c_buy    = input.color(color.new(color.green, 30), "Buy", inline = "12", group = GP2)
+color   i_c_sell    = input.color(color.new(color.red, 10), "Sell", inline = "12", group = GP2)
+color   i_c_neutral = input.color(color.new(color.gray, 30), "Neutral", inline = "12", group = GP2)
+
+
+var table panel = table.new(i_tableYpos + "_" + i_tableXpos, 6, 10)
+if barstate.islast
+    // Table header.
+    table.cell(panel, 0, 1, "TF", bgcolor = i_c_neutral, text_color=color.white, width=4)
+    table.cell(panel, 1, 1, "TYPE", bgcolor = i_c_neutral, text_color=color.white, width=4)
+    table.cell(panel, 2, 1, "RSI", bgcolor = i_c_neutral, text_color=color.white, width=6)
+    table.cell(panel, 3, 1, "S", bgcolor = i_c_neutral, text_color=color.white, width=6)
+    table.cell(panel, 4, 1, "R", bgcolor = i_c_neutral, text_color=color.white, width=6)
+    table.cell(panel, 5, 1, "%V", bgcolor = i_c_neutral, text_color=color.white, width=6)
+    
+//2h
+tf2h = '120'
+tf2h_InMinutes = f_tfResInMinutes(tf2h)
+currentTFInMinutes = f_resInMinutes()
+chartOnLower_tf2h = currentTFInMinutes <= tf2h_InMinutes
+
+tf2h_inH = str.tostring(tf2h_InMinutes / 60)
+tf2h_text = if stockschart or futureschart
+    tf2h_InMinutes >= 60 and tf2h_InMinutes < 960 ? tf2h_inH + 'h' : tf2h_InMinutes < 60 ? tf2h + 'm' : tf2h
+else
+    tf2h_InMinutes >= 60 and tf2h_InMinutes < 1440 ? tf2h_inH + 'h' : tf2h_InMinutes < 60 ? tf2h + 'm' : tf2h
+
+barsin_tf2h = tf2h_InMinutes / currentTFInMinutes
+
+tf2h_bar_index = math.ceil(1 * barsin_tf2h)
+
+tf2h_bar_index_range = math.ceil(3 * barsin_tf2h)
+
+var int tf2h_High_index = na
+var int tf2h_Low_index = na
+
+if tf2h_bar_index + tf2h_bar_index_range > 4999
+    tf2h_High_index := 4999
+    tf2h_Low_index := 4999
+else
+    tf2h_High_index :=  math.abs(ta.highestbars(high, nz(tf2h_bar_index_range, 1)))[tf2h_bar_index] + tf2h_bar_index
+    tf2h_Low_index := math.abs(ta.lowestbars(low, nz(tf2h_bar_index_range, 1)))[tf2h_bar_index] + tf2h_bar_index
+
+
+// S/R  = Time Frame 1 = tf2h
+tf2h_Vol = f_tfSources(tf2h, volume)
+tf2h_VolMA = ta.sma(tf2h_Vol, 5)
+tf2h_High = f_tfSources(tf2h, high)
+tf2h_Low = f_tfSources(tf2h, low)
+tf2h_Open = f_tfSources(tf2h, open)
+tf2h_Close = f_tfSources(tf2h, close)
+
+tf2h_Up = f_tfUp(tf2h_High, tf2h_Vol, tf2h_VolMA)
+tf2h_Down = f_tfDown(tf2h_Low, tf2h_Vol, tf2h_VolMA)
+
+tf2h_CalcFractalUp() =>
+    tf2h_FractalUp = 0.0
+    tf2h_FractalUp := tf2h_Up ? tf2h_High[3] : tf2h_FractalUp[1]
+    tf2h_FractalUp
+
+tf2h_CalcFractalDown() =>
+    tf2h_FractalDown = 0.0
+    tf2h_FractalDown := tf2h_Down ? tf2h_Low[3] : tf2h_FractalDown[1]
+    tf2h_FractalDown
+
+tf2h_CalcFractalUpZone() =>
+    tf2h_FractalUpZone = 0.0
+    tf2h_FractalUpZone := tf2h_Up and tf2h_Close[3] >= tf2h_Open[3] ? tf2h_Close[3] : tf2h_Up and tf2h_Close[3] < tf2h_Open[3] ? tf2h_Open[3] : tf2h_FractalUpZone[1]
+    tf2h_FractalUpZone
+
+tf2h_CalcFractalDownZone() =>
+    tf2h_FractalDownZone = 0.0
+    tf2h_FractalDownZone := tf2h_Down and tf2h_Close[3] >= tf2h_Open[3] ? tf2h_Open[3] : tf2h_Down and tf2h_Close[3] < tf2h_Open[3] ? tf2h_Close[3] : tf2h_FractalDownZone[1]
+    tf2h_FractalDownZone
+
+tf2h_ResistanceUp = request.security(syminfo.tickerid, tf2h, tf2h_CalcFractalUp())
+tf2h_ResistanceZone = request.security(syminfo.tickerid, tf2h, tf2h_CalcFractalUpZone())
+
+tf2h_SupportDown = request.security(syminfo.tickerid, tf2h, tf2h_CalcFractalDown())
+tf2h_SupportZone = request.security(syminfo.tickerid, tf2h, tf2h_CalcFractalDownZone())
+
+
+ema_2h_5 = ta.ema(close, 5)
+ema2h_5 = request.security(syminfo.tickerid, tf2h, ema_2h_5, barmerge.gaps_off, barmerge.lookahead_on)
+ema_2h_10 = ta.ema(close, 10)
+ema2h_10 = request.security(syminfo.tickerid, tf2h, ema_2h_10, barmerge.gaps_off, barmerge.lookahead_on)
+ema_2h_20 = ta.ema(close, 20)
+ema2h_20 = request.security(syminfo.tickerid, tf2h, ema_2h_20, barmerge.gaps_off, barmerge.lookahead_on)
+rsi_2h = ta.rsi(close, 14)
+rsi2h = request.security(syminfo.tickerid, tf2h, rsi_2h, barmerge.gaps_off, barmerge.lookahead_on)
+vol2h = request.security(syminfo.tickerid, tf2h, volume, barmerge.gaps_off, barmerge.lookahead_on)
+vol2h_change = RoundUp((vol2h[0] - vol2h[1])/vol2h[1]*100, 2)
+txt_color_2h = vol2h_change > 0 ? color.white : color.yellow
+
+can_buy_2h = ema2h_5 > ema2h_10 and ema2h_10 > ema2h_20 and (open > ema2h_5 or close > ema2h_5)
+sell_lbl_2h = ''
+if ema2h_5 < ema2h_10
+    sell_lbl_2h := 'N-SELL'
+else if ema2h_5 < ema2h_10 and ema2h_10 < ema2h_20 and (open < ema2h_5 or close < ema2h_5)
+    sell_lbl_2h := 'B-SELL'    
+
+if can_buy_2h
+    if barstate.islast
+        table.cell(panel, 0, 2, "2H", bgcolor = i_c_buy, text_color=color.white)
+        table.cell(panel, 1, 2, "BUY", bgcolor = i_c_buy, text_color=color.white)
+        table.cell(panel, 2, 2, str.format("{0}", rsi2h[0]), bgcolor = i_c_buy, text_color=color.white)
+        table.cell(panel, 3, 2, str.tostring((tf2h_SupportDown[0] + tf2h_SupportZone[0])/2), bgcolor = i_c_buy, text_color=color.white)
+        table.cell(panel, 4, 2, str.tostring((tf2h_ResistanceUp[0] + tf2h_ResistanceZone[0])/2), bgcolor = i_c_buy, text_color=color.white)
+        table.cell(panel, 5, 2, str.tostring(vol2h_change)+"%", bgcolor = i_c_buy, text_color=txt_color_2h)
+        
+        
+if (sell_lbl_2h != '')
+    if barstate.islast
+        table.cell(panel, 0, 2, "2H", bgcolor = i_c_sell, text_color=color.white)
+        table.cell(panel, 1, 2, sell_lbl_2h, bgcolor = i_c_sell, text_color=color.white)
+        table.cell(panel, 2, 2, str.format("{0}", rsi2h[0]), bgcolor = i_c_sell, text_color=color.white)
+        table.cell(panel, 3, 2, str.tostring((tf2h_SupportDown[0] + tf2h_SupportZone[0])/2), bgcolor = i_c_sell, text_color=color.white)
+        table.cell(panel, 4, 2, str.tostring((tf2h_ResistanceUp[0] + tf2h_ResistanceZone[0])/2), bgcolor = i_c_sell, text_color=color.white)
+        table.cell(panel, 5, 2, str.tostring(vol2h_change)+"%", bgcolor = i_c_sell, text_color= txt_color_2h)
+        
+//4h
+tf4h = '240'
+tf4h_InMinutes = f_tfResInMinutes(tf4h)
+chartOnLower_tf4h = currentTFInMinutes <= tf4h_InMinutes
+
+tf4h_inH = str.tostring(tf4h_InMinutes / 60)
+tf4h_text = if stockschart or futureschart
+    tf4h_InMinutes >= 60 and tf4h_InMinutes < 960 ? tf4h_inH + 'h' : tf4h_InMinutes < 60 ? tf4h + 'm' : tf4h
+else
+    tf4h_InMinutes >= 60 and tf4h_InMinutes < 1440 ? tf4h_inH + 'h' : tf4h_InMinutes < 60 ? tf4h + 'm' : tf4h
+
+barsin_tf4h = tf4h_InMinutes / currentTFInMinutes
+
+tf4h_bar_index = math.ceil(1 * barsin_tf4h)
+
+tf4h_bar_index_range = math.ceil(3 * barsin_tf4h)
+
+var int tf4h_High_index = na
+var int tf4h_Low_index = na
+
+if tf4h_bar_index + tf4h_bar_index_range > 4999
+    tf4h_High_index := 4999
+    tf4h_Low_index := 4999
+else
+    tf4h_High_index :=  math.abs(ta.highestbars(high, nz(tf4h_bar_index_range, 1)))[tf4h_bar_index] + tf4h_bar_index
+    tf4h_Low_index := math.abs(ta.lowestbars(low, nz(tf4h_bar_index_range, 1)))[tf4h_bar_index] + tf4h_bar_index
+
+
+// S/R  = Time Frame 1 = tf4h
+tf4h_Vol = f_tfSources(tf4h, volume)
+tf4h_VolMA = ta.sma(tf4h_Vol, 5)
+tf4h_High = f_tfSources(tf4h, high)
+tf4h_Low = f_tfSources(tf4h, low)
+tf4h_Open = f_tfSources(tf4h, open)
+tf4h_Close = f_tfSources(tf4h, close)
+
+tf4h_Up = f_tfUp(tf4h_High, tf4h_Vol, tf4h_VolMA)
+tf4h_Down = f_tfDown(tf4h_Low, tf4h_Vol, tf4h_VolMA)
+
+tf4h_CalcFractalUp() =>
+    tf4h_FractalUp = 0.0
+    tf4h_FractalUp := tf4h_Up ? tf4h_High[3] : tf4h_FractalUp[1]
+    tf4h_FractalUp
+
+tf4h_CalcFractalDown() =>
+    tf4h_FractalDown = 0.0
+    tf4h_FractalDown := tf4h_Down ? tf4h_Low[3] : tf4h_FractalDown[1]
+    tf4h_FractalDown
+
+tf4h_CalcFractalUpZone() =>
+    tf4h_FractalUpZone = 0.0
+    tf4h_FractalUpZone := tf4h_Up and tf4h_Close[3] >= tf4h_Open[3] ? tf4h_Close[3] : tf4h_Up and tf4h_Close[3] < tf4h_Open[3] ? tf4h_Open[3] : tf4h_FractalUpZone[1]
+    tf4h_FractalUpZone
+
+tf4h_CalcFractalDownZone() =>
+    tf4h_FractalDownZone = 0.0
+    tf4h_FractalDownZone := tf4h_Down and tf4h_Close[3] >= tf4h_Open[3] ? tf4h_Open[3] : tf4h_Down and tf4h_Close[3] < tf4h_Open[3] ? tf4h_Close[3] : tf4h_FractalDownZone[1]
+    tf4h_FractalDownZone
+
+tf4h_ResistanceUp = request.security(syminfo.tickerid, tf4h, tf4h_CalcFractalUp())
+tf4h_ResistanceZone = request.security(syminfo.tickerid, tf4h, tf4h_CalcFractalUpZone())
+
+tf4h_SupportDown = request.security(syminfo.tickerid, tf4h, tf4h_CalcFractalDown())
+tf4h_SupportZone = request.security(syminfo.tickerid, tf4h, tf4h_CalcFractalDownZone())
+
+
+ema_4h_5 = ta.ema(close, 5)
+ema4h_5 = request.security(syminfo.tickerid, tf4h, ema_4h_5, barmerge.gaps_off, barmerge.lookahead_on)
+ema_4h_10 = ta.ema(close, 10)
+ema4h_10 = request.security(syminfo.tickerid, tf4h, ema_4h_10, barmerge.gaps_off, barmerge.lookahead_on)
+ema_4h_20 = ta.ema(close, 20)
+ema4h_20 = request.security(syminfo.tickerid, tf4h, ema_4h_20, barmerge.gaps_off, barmerge.lookahead_on)
+rsi_4h = ta.rsi(close, 14)
+rsi4h = request.security(syminfo.tickerid, tf4h, rsi_4h, barmerge.gaps_off, barmerge.lookahead_on)
+vol4h = request.security(syminfo.tickerid, tf4h, volume, barmerge.gaps_off, barmerge.lookahead_on)
+vol4h_change = RoundUp((vol4h[0] - vol4h[1])/vol4h[1]*100, 2)
+txt_color_4h = vol4h_change > 0 ? color.white : color.yellow
+
+can_buy_4h = ema4h_5 > ema4h_10 and ema4h_10 > ema4h_20 and (open > ema4h_5 or close > ema4h_5)
+sell_lbl_4h = ''
+if ema4h_5 < ema4h_10
+    sell_lbl_4h := 'N-SELL'
+else if ema4h_5 < ema4h_10 and ema4h_10 < ema4h_20 and (open < ema4h_5 or close < ema4h_5)
+    sell_lbl_4h := 'B-SELL'    
+
+table.cell(panel, 0, 0, height=58)
+if can_buy_4h
+    if barstate.islast
+        table.cell(panel, 0, 3, "4H", bgcolor = i_c_buy, text_color=color.white)
+        table.cell(panel, 1, 3, "BUY", bgcolor = i_c_buy, text_color=color.white)
+        table.cell(panel, 2, 3, str.format("{0}", rsi4h[0]), bgcolor = i_c_buy, text_color=color.white)
+        table.cell(panel, 3, 3, str.tostring((tf4h_SupportDown[0] + tf4h_SupportZone[0])/2), bgcolor = i_c_buy, text_color=color.white)
+        table.cell(panel, 4, 3, str.tostring((tf4h_ResistanceUp[0] + tf4h_ResistanceZone[0])/2), bgcolor = i_c_buy, text_color=color.white)
+        table.cell(panel, 5, 3, str.tostring(vol4h_change)+"%", bgcolor = i_c_buy, text_color= txt_color_4h)
+        
+        
+if (sell_lbl_4h != '')
+    if barstate.islast
+        table.cell(panel, 0, 3, "4H", bgcolor = i_c_sell, text_color=color.white)
+        table.cell(panel, 1, 3, sell_lbl_4h, bgcolor = i_c_sell, text_color=color.white)
+        table.cell(panel, 2, 3, str.format("{0}", rsi4h[0]), bgcolor = i_c_sell, text_color=color.white)
+        table.cell(panel, 3, 3, str.tostring((tf4h_SupportDown[0] + tf4h_SupportZone[0])/2), bgcolor = i_c_sell, text_color=color.white)
+        table.cell(panel, 4, 3, str.tostring((tf4h_ResistanceUp[0] + tf4h_ResistanceZone[0])/2), bgcolor = i_c_sell, text_color=color.white)
+        table.cell(panel, 5, 3, str.tostring(vol4h_change)+"%", bgcolor = i_c_sell, text_color= txt_color_4h)
+     
+

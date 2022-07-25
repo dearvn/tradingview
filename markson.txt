@@ -1,0 +1,47 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © thinhdangho
+
+//@version=5
+indicator("Snag - Makson", overlay=true)
+
+Ema5 = ta.wma(close, 5)
+
+long = close > Ema5 and close[1] < Ema5[1] and close > close[1]
+profit_c = close < close[1] and close > Ema5
+keepup = close > Ema5 and close > close[1] and close [1] < close[2]
+
+short = close < Ema5 and close[1] > Ema5[1] and close < close[1]
+profit_p = close > close[1] and close < Ema5
+keepdown = close < Ema5 and close < close[1] and close [1] > close[2]
+
+
+var time_long_arr = array.new_int()
+var time_short_arr = array.new_int()
+
+is_long = long or profit_c or keepup
+is_short = short or profit_p or keepdown
+if is_long
+    time_short_arr := array.new_int()
+    if array.size(time_long_arr) == 0
+        array.push(time_long_arr, time)
+else if is_short
+    time_long_arr := array.new_int()
+    if array.size(time_short_arr) == 0
+        array.push(time_short_arr, time)
+        
+is_alert_long = false
+is_alert_short = false
+
+if array.size(time_long_arr) > 0
+    if time == array.get(time_long_arr, array.size(time_long_arr)-1)
+        is_alert_long := true
+else if array.size(time_short_arr) > 0
+    if time == array.get(time_short_arr, array.size(time_short_arr)-1)
+        is_alert_short := true
+
+plotshape(is_long, title="Long", style=shape.xcross, location=location.abovebar, color=color.yellow, size=size.tiny)
+plotshape(is_short, title="Short", style=shape.xcross, location=location.belowbar, color=color.red, size=size.tiny)
+
+alertcondition(is_alert_long, title='Buy Call', message='{ {{ticker}} @ {{close}} - StopLoss 5%"}')
+alertcondition(is_alert_short, title='sell Short', message='{ {{ticker}} @ {{close}} - StopLoss 5%"}')
+
